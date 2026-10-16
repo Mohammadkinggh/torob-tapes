@@ -1,0 +1,39 @@
+name: torob_details
+run-name: details ${{ inputs.shard }} budget ${{ inputs.budget }}
+on:
+  workflow_dispatch:
+    inputs:
+      shard: {description: 'shard i/n', required: true, default: '1/4'}
+      budget: {description: 'max details requests', required: true, default: '55'}
+permissions:
+  contents: write
+concurrency:
+  group: torob-details-${{ inputs.shard }}
+  cancel-in-progress: false
+jobs:
+  details:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install curl_cffi
+      - name: fetch details
+        run: python scripts/details_stage.py --shard "${{ inputs.shard }}" --budget "${{ inputs.budget }}" --list list.json --out details.jsonl
+        env:
+          PYTHONUNBUFFERED: '1'
+      - name: commit
+        run: |
+          if [ -f details.jsonl ]; then
+            mkdir -p results && cp details.jsonl "results/details_${{ inputs.shard }}.jsonl"
+            git config user.name "torob-bot"; git config user.email "torob-bot@users.noreply.github.com"
+            git add results/ || true
+            git commit -m "details ${{ inputs.shard }} at $(date -u +%FT%TZ)" || true
+            git push || true
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: details-${{ inputs.shard }}
+          path: details.jsonl
+          if-no-files-found: ignore
